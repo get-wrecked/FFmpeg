@@ -163,8 +163,9 @@ struct AVExpr {
         e_pow, e_mul, e_div, e_add,
         e_last, e_st, e_while, e_taylor, e_root, e_floor, e_ceil, e_trunc, e_round,
         e_sqrt, e_not, e_random, e_hypot, e_gcd,
-        e_if, e_ifnot, e_print, e_bitand, e_bitor, e_between, e_clip, e_atan2, e_lerp,
-        e_sgn, e_randomi
+        e_if, e_ifnot, e_print, e_bitand, e_bitor, e_between, e_between2, e_between3, e_clip, e_atan2, e_lerp,
+        e_sgn, e_easein_sine, e_easeout_sine, e_easeinout_sine,
+        e_easein_quart, e_easeout_quart, e_easeinout_quart, e_randomi
     } type;
     double value; // is sign in other types
     int const_index;
@@ -173,7 +174,7 @@ struct AVExpr {
         double (*func1)(void *, double);
         double (*func2)(void *, double, double);
     } a;
-    struct AVExpr *param[3];
+    struct AVExpr *param[4];
     double *var;
     FFSFC64 *prng_state;
 };
@@ -219,11 +220,70 @@ static double eval_expr(Parser *p, AVExpr *e)
             return e->value * (d >= eval_expr(p, e->param[1]) &&
                                d <= eval_expr(p, e->param[2]));
         }
+        case e_between2: {
+            double d = eval_expr(p, e->param[0]);
+            return e->value * (d >= eval_expr(p, e->param[1]) &&
+                               d <  eval_expr(p, e->param[2]));
+        }
+        case e_between3: {
+            double d = eval_expr(p, e->param[0]);
+            return e->value * (d >  eval_expr(p, e->param[1]) &&
+                               d <= eval_expr(p, e->param[2]));
+        }
         case e_lerp: {
             double v0 = eval_expr(p, e->param[0]);
-            double v1 = eval_expr(p, e->param[1]);
             double f  = eval_expr(p, e->param[2]);
-            return v0 + (v1 - v0) * f;
+			double v1 = (f == 0)? 0: eval_expr(p, e->param[1]);
+			return v0 + f * (v1 - v0);
+        }
+        case e_easein_sine: {
+            double t = eval_expr(p, e->param[0]);
+            double b = eval_expr(p, e->param[1]);
+            double c  = eval_expr(p, e->param[2]);
+            double d  = eval_expr(p, e->param[3]);
+            return -c * cos(t/d * (M_PI/2)) + c + b;
+        }
+        case e_easeout_sine: {
+            double t = eval_expr(p, e->param[0]);
+            double b = eval_expr(p, e->param[1]);
+            double c  = eval_expr(p, e->param[2]);
+            double d  = eval_expr(p, e->param[3]);
+            return c * sin(t/d * (M_PI/2)) + b;
+        }
+        case e_easeinout_sine: {
+            double t = eval_expr(p, e->param[0]);
+            double b = eval_expr(p, e->param[1]);
+            double c  = eval_expr(p, e->param[2]);
+            double d  = eval_expr(p, e->param[3]);
+            return -c/2 * (cos(M_PI*t/d) - 1) + b;
+        }
+        case e_easein_quart: {
+            double t = eval_expr(p, e->param[0]);
+            double b = eval_expr(p, e->param[1]);
+            double c  = eval_expr(p, e->param[2]);
+            double d  = eval_expr(p, e->param[3]);
+            t /= d;
+            return c*t*t*t*t + b;
+        }
+        case e_easeout_quart: {
+            double t = eval_expr(p, e->param[0]);
+            double b = eval_expr(p, e->param[1]);
+            double c  = eval_expr(p, e->param[2]);
+            double d  = eval_expr(p, e->param[3]);
+            t /= d;
+            t--;
+            return -c * (t*t*t*t - 1) + b;
+        }
+        case e_easeinout_quart: {
+            double t = eval_expr(p, e->param[0]);
+            double b = eval_expr(p, e->param[1]);
+            double c  = eval_expr(p, e->param[2]);
+            double d  = eval_expr(p, e->param[3]);
+            t /= d/2;
+            if (t < 1)
+                return c/2*t*t*t*t + b;
+            t -= 2;
+            return -c/2 * (t*t*t*t - 2) + b;
         }
         case e_print: {
             double x = eval_expr(p, e->param[0]);
@@ -320,6 +380,14 @@ static double eval_expr(Parser *p, AVExpr *e)
             p->var[0] = var0;
             return -low_v<high_v ? low : high;
         }
+		case e_mul:
+		case e_div: {
+			double d = eval_expr(p, e->param[0]);
+			double d2 = (d == 0)? 1: eval_expr(p, e->param[1]);
+			return e->type == e_mul?
+				e->value * (d * d2):
+				e->value * (d2 ? (d / d2) : d * INFINITY);
+		}
         default: {
             double d = eval_expr(p, e->param[0]);
             double d2 = eval_expr(p, e->param[1]);
@@ -334,8 +402,6 @@ static double eval_expr(Parser *p, AVExpr *e)
                 case e_lt:  return e->value * (d <  d2 ? 1.0 : 0.0);
                 case e_lte: return e->value * (d <= d2 ? 1.0 : 0.0);
                 case e_pow: return e->value * pow(d, d2);
-                case e_mul: return e->value * (d * d2);
-                case e_div: return e->value * (d2 ? (d / d2) : d * INFINITY);
                 case e_add: return e->value * (d + d2);
                 case e_last:return e->value * d2;
                 case e_st :  {
@@ -438,6 +504,10 @@ static int parse_primary(AVExpr **e, Parser *p)
         p->s++; // ","
         parse_expr(&d->param[2], p);
     }
+    if (p->s[0]== ',') {
+        p->s++; // ","
+        parse_expr(&d->param[3], p);
+    }
     if (p->s[0] != ')') {
         av_log(p, AV_LOG_ERROR, "Missing ')' or too many args in '%s'\n", s0);
         av_expr_free(d);
@@ -493,10 +563,18 @@ static int parse_primary(AVExpr **e, Parser *p)
     else if (strmatch(next, "bitand")) d->type = e_bitand;
     else if (strmatch(next, "bitor" )) d->type = e_bitor;
     else if (strmatch(next, "between"))d->type = e_between;
+    else if (strmatch(next, "gtelt" )) d->type = e_between2;
+    else if (strmatch(next, "gtlte" )) d->type = e_between3;
     else if (strmatch(next, "clip"  )) d->type = e_clip;
     else if (strmatch(next, "atan2" )) d->type = e_atan2;
     else if (strmatch(next, "lerp"  )) d->type = e_lerp;
     else if (strmatch(next, "sgn"   )) d->type = e_sgn;
+    else if (strmatch(next, "ease_is"  )) d->type = e_easein_sine;
+    else if (strmatch(next, "ease_os"  )) d->type = e_easeout_sine;
+    else if (strmatch(next, "ease_ios" )) d->type = e_easeinout_sine;
+    else if (strmatch(next, "ease_iq"  )) d->type = e_easein_quart;
+    else if (strmatch(next, "ease_oq"  )) d->type = e_easeout_quart;
+    else if (strmatch(next, "ease_ioq" )) d->type = e_easeinout_quart;
     else {
         for (i=0; p->func1_names && p->func1_names[i]; i++) {
             if (strmatch(next, p->func1_names[i])) {
@@ -697,12 +775,24 @@ static int verify_expr(AVExpr *e)
             return verify_expr(e->param[0]) && verify_expr(e->param[1])
                    && (!e->param[2] || verify_expr(e->param[2]));
         case e_between:
+        case e_between2:
+        case e_between3:
         case e_clip:
         case e_lerp:
         case e_randomi:
             return verify_expr(e->param[0]) &&
                    verify_expr(e->param[1]) &&
                    verify_expr(e->param[2]);
+        case e_easein_sine:
+        case e_easeout_sine:
+        case e_easeinout_sine:
+        case e_easein_quart:
+        case e_easeout_quart:
+        case e_easeinout_quart:
+            return verify_expr(e->param[0]) &&
+                   verify_expr(e->param[1]) &&
+                   verify_expr(e->param[2]) &&
+                   verify_expr(e->param[3]);
         default: return verify_expr(e->param[0]) && verify_expr(e->param[1]) && !e->param[2];
     }
 }
