@@ -25,6 +25,7 @@
 
 #include "libavutil/eval.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/mathematics.h"
 
 #include "avfilter.h"
 
@@ -40,8 +41,10 @@ typedef struct FilterParam {
 #define A 3
 
 int ff_boxblur_eval_filter_params(AVFilterLink *inlink,
+                                  AVFrame      *in,
                                   FilterParam *luma_param,
                                   FilterParam *chroma_param,
-                                  FilterParam *alpha_param);
+                                  FilterParam *alpha_param,
+                                  int *hasTemporalExpressions);
 
 #endif // AVFILTER_BOXBLUR_H
