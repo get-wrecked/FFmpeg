@@ -1,3 +1,13 @@
+Medal-FFmpeg README
+
+This is our private FFmpeg fork used to for all our backend and frontend builds.
+Our builds are not produced here, but in our Medal-FFmpeg-Builds repository which fetches the corresponding branches from here.
+
+Here is an overview of how that works:
+<img width="2368" height="3552" alt="overview" src="https://github.com/user-attachments/assets/75b4c9d5-1e39-4898-bf28-c2370d5759d8" />
+
+
+
 FFmpeg README
 =============
 
