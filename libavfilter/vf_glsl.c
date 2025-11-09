@@ -2,7 +2,6 @@
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "internal.h"
 
 #include "avfilter.h"
 #include "formats.h"
@@ -13,6 +12,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/timestamp.h"
 #include "drawutils.h"
@@ -32,7 +32,6 @@ enum var_name {
     VAR_MAIN_H,    VAR_MH,
     VAR_POWER,
     VAR_N,
-    VAR_POS,
     VAR_T,
     VAR_VARS_NB
 };
@@ -115,7 +114,6 @@ static const char *const var_names[] = {
     "main_h",    "H", ///< height of the main    video
     "power",
     "n",            ///< number of frame
-    "pos",          ///< position in the file
     "t",            ///< timestamp expressed in seconds
     NULL
 };
@@ -1111,7 +1109,6 @@ static int config_input_props(AVFilterLink *inlink) {
 	c->var_values[VAR_MAIN_H] = c->var_values[VAR_MH] = ctx->inputs[MAIN]->h;
 	c->var_values[VAR_POWER] = NAN;
 	c->var_values[VAR_T] = NAN;
-	c->var_values[VAR_POS] = NAN;
 
 	if (c->shader == SHADER_TYPE_TRANSITION) {
 		av_log(ctx, AV_LOG_VERBOSE,
@@ -1167,6 +1164,8 @@ static int config_input_props(AVFilterLink *inlink) {
 static int config_transition_output(AVFilterLink *outLink)
 {
 	AVFilterContext *ctx;
+	FilterLink *il;
+	FilterLink *ol;
 	GLSLContext *c;
 	AVFilterLink *fromLink, *toLink;
 
@@ -1175,6 +1174,8 @@ static int config_transition_output(AVFilterLink *outLink)
 	c = ctx->priv;
 	fromLink = ctx->inputs[FROM];
 	toLink = ctx->inputs[TO];
+	il = ff_filter_link(fromLink);
+	ol = ff_filter_link(toLink);
 	int ret;
 
 	if (fromLink->format != toLink->format) {
@@ -1194,7 +1195,7 @@ static int config_transition_output(AVFilterLink *outLink)
 	outLink->w = fromLink->w;
 	outLink->h = fromLink->h;
 	// outLink->time_base = fromLink->time_base;
-	outLink->frame_rate = fromLink->frame_rate;
+	ol->frame_rate = il->frame_rate;
 
 	if ((ret = ff_framesync_init_dualinput(&c->fs, ctx)) < 0) {
 		return ret;
@@ -1207,6 +1208,7 @@ static int config_transition_output(AVFilterLink *outLink)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
 	AVFilterContext *ctx;
+	FilterLink *il = ff_filter_link(inlink);
 	AVFilterLink    *outlink;
 	GLSLContext *c;
 	AVFrame *out;
@@ -1229,11 +1231,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
 	glUseProgram(c->program);
 
     if (c->eval_mode == EVAL_MODE_FRAME) {
-      int64_t pos = in->pkt_pos;
-
-      c->var_values[VAR_N] = inlink->frame_count_out;
+      c->var_values[VAR_N] = il->frame_count_out;
       c->var_values[VAR_T] = in->pts == AV_NOPTS_VALUE ? NAN : in->pts * av_q2d(inlink->time_base);
-      c->var_values[VAR_POS] = pos == -1 ? NAN : pos;
 
       c->var_values[VAR_MAIN_W] = c->var_values[VAR_MW] = in->width;
       c->var_values[VAR_MAIN_H] = c->var_values[VAR_MH] = in->height;
@@ -1421,20 +1420,20 @@ static const AVFilterPad glsl_outputs[] = {
 	{NULL}
 };
 
-AVFILTER_DEFINE_CLASS(glsl);
+AVFILTER_DEFINE_CLASS_EXT(glsl, "glsl", glsl_options);
 
-AVFilter ff_vf_glsl = {
-  .name          = "glsl",
-  .description   = NULL_IF_CONFIG_SMALL("Generic OpenGL shader filter"),
+const FFFilter ff_vf_glsl = {
+  .p.name          = "glsl",
+  .p.description   = NULL_IF_CONFIG_SMALL("Generic OpenGL shader filter"),
   .priv_size     = sizeof(GLSLContext),
-  .priv_class    = &glsl_class,
+  .p.priv_class    = &glsl_class,
   .init          = init,
   .uninit        = uninit,
-  .query_formats = query_formats,
   .process_command = process_command,
-  .inputs        = glsl_inputs,
-  .outputs       = glsl_outputs,
-  .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC};
+  FILTER_INPUTS(glsl_inputs),
+  FILTER_OUTPUTS(glsl_outputs),
+  FILTER_QUERY_FUNC(query_formats),
+  .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC};
 
 
 static const AVOption gltransition_options[] = {
@@ -1469,17 +1468,17 @@ static const AVFilterPad gltransition_outputs[] = {
 
 FRAMESYNC_DEFINE_CLASS(gltransition, GLSLContext, fs);
 
-AVFilter ff_vf_gltransition = {
-  .name = "gltransition",
-  .description = NULL_IF_CONFIG_SMALL("OpenGL blend transitions"),
+FFFilter ff_vf_gltransition = {
+  .p.name = "gltransition",
+  .p.description = NULL_IF_CONFIG_SMALL("OpenGL blend transitions"),
   .priv_size = sizeof(GLSLContext),
   .preinit = gltransition_framesync_preinit,
   .init = init_transition,
   .uninit = uninit_transition,
-  .query_formats = query_formats,
   .activate = activate_transition,
-  .inputs = gltransition_inputs,
-  .outputs = gltransition_outputs,
-  .priv_class = &gltransition_class,
-  .flags = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC
+  FILTER_INPUTS(gltransition_inputs),
+  FILTER_OUTPUTS(gltransition_outputs),
+  FILTER_QUERY_FUNC(query_formats),
+  .p.priv_class = &gltransition_class,
+  .p.flags = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC
 };

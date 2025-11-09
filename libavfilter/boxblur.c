@@ -32,7 +32,6 @@ static const char *const var_names[] = {
     "hsub",
     "vsub",
     "n",
-    "pos",
     "t",
     NULL
 };
@@ -45,7 +44,6 @@ enum var_name {
     VAR_HSUB,
     VAR_VSUB,
     VAR_N,
-    VAR_POS,
     VAR_T,
     VARS_NB
 };
@@ -66,7 +64,6 @@ int ff_boxblur_eval_filter_params(AVFilterLink *inlink,
     double var_values[VARS_NB], res;
     char *expr;
     int ret;
-    int64_t pos;
 
     if (!luma_param->radius_expr) {
         av_log(ctx, AV_LOG_ERROR, "Luma radius expression is not set.\n");
@@ -98,14 +95,11 @@ int ff_boxblur_eval_filter_params(AVFilterLink *inlink,
     var_values[VAR_VSUB]    = 1<<(desc->log2_chroma_h);
 
     if (in){
-        pos = in->pkt_pos;
         var_values[VAR_N] = inl->frame_count_out;
         var_values[VAR_T] = in->pts == AV_NOPTS_VALUE ? NAN : in->pts * av_q2d(inlink->time_base);
-        var_values[VAR_POS] = pos == -1 ? NAN : pos;
     } else {
         var_values[VAR_N] = inl->frame_count_out;
         var_values[VAR_T] = 0;
-        var_values[VAR_POS] = NAN;
     }
 
 #define EVAL_RADIUS_EXPR(comp)                                          \
