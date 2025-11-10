@@ -1422,18 +1422,18 @@ static const AVFilterPad glsl_outputs[] = {
 
 AVFILTER_DEFINE_CLASS_EXT(glsl, "glsl", glsl_options);
 
-const FFFilter ff_vf_glsl = {
-  .p.name          = "glsl",
-  .p.description   = NULL_IF_CONFIG_SMALL("Generic OpenGL shader filter"),
+const AVFilter ff_vf_glsl = {
+  .name          = "glsl",
+  .description   = NULL_IF_CONFIG_SMALL("Generic OpenGL shader filter"),
   .priv_size     = sizeof(GLSLContext),
-  .p.priv_class    = &glsl_class,
+  .priv_class    = &glsl_class,
   .init          = init,
   .uninit        = uninit,
   .process_command = process_command,
   FILTER_INPUTS(glsl_inputs),
   FILTER_OUTPUTS(glsl_outputs),
   FILTER_QUERY_FUNC(query_formats),
-  .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC};
+  .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC};
 
 
 static const AVOption gltransition_options[] = {
@@ -1468,9 +1468,9 @@ static const AVFilterPad gltransition_outputs[] = {
 
 FRAMESYNC_DEFINE_CLASS(gltransition, GLSLContext, fs);
 
-FFFilter ff_vf_gltransition = {
-  .p.name = "gltransition",
-  .p.description = NULL_IF_CONFIG_SMALL("OpenGL blend transitions"),
+AVFilter ff_vf_gltransition = {
+  .name = "gltransition",
+  .description = NULL_IF_CONFIG_SMALL("OpenGL blend transitions"),
   .priv_size = sizeof(GLSLContext),
   .preinit = gltransition_framesync_preinit,
   .init = init_transition,
@@ -1479,6 +1479,6 @@ FFFilter ff_vf_gltransition = {
   FILTER_INPUTS(gltransition_inputs),
   FILTER_OUTPUTS(gltransition_outputs),
   FILTER_QUERY_FUNC(query_formats),
-  .p.priv_class = &gltransition_class,
-  .p.flags = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC
+  .priv_class = &gltransition_class,
+  .flags = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC
 };
